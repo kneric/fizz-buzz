@@ -21,6 +21,7 @@ func SingleFizzBuzz(n int) string {
 	} else if n%5 == 0 {
 		return "Buzz"
 	}
+	// By default, return the integer number n without any operation
 	return strconv.Itoa(n)
 }
 
@@ -31,10 +32,29 @@ func RangeFizzBuzzHandler(w http.ResponseWriter, r *http.Request) {
 
 	from, errFrom := strconv.Atoi(fromStr)
 	to, errTo := strconv.Atoi(toStr)
+	// range "from" until "to" is inclusive
+	numRange := to - from + 1
 
-	if errFrom != nil || errTo != nil || from > to || to-from > 100 {
-		http.Error(w, "Invalid parameters", http.StatusBadRequest)
-		log.Printf("Request: %s, Response: Invalid parameters, Latency: %v\n", r.URL.String(), time.Since(startTime))
+	if errFrom != nil || errTo != nil {
+		errMsg := "Invalid parameters: input must be an integer"
+		http.Error(w, errMsg, http.StatusBadRequest)
+		log.Printf("Request: from:%s to:%s, Response: %v, Latency: %v\n", r.URL.Query().Get("from"), r.URL.Query().Get("to"), errMsg, time.Since(startTime))
+		return
+	}
+
+	// from <= to
+	if from > to {
+		errMsg := "Invalid parameters: 'from' cannot be greater than 'to'"
+		http.Error(w, errMsg, http.StatusBadRequest)
+		log.Printf("Request: from:%s to:%s, Response: %v, Latency: %v\n", r.URL.Query().Get("from"), r.URL.Query().Get("to"), errMsg, time.Since(startTime))
+		return
+	}
+
+	//Accept at maximum 100 numbers as the range
+	if numRange > 100 {
+		errMsg := "Invalid parameters: the maximum range from 'from' to 'to' is 100"
+		http.Error(w, errMsg, http.StatusBadRequest)
+		log.Printf("Request: from:%s to:%s, Response: %v, Latency: %v\n", r.URL.Query().Get("from"), r.URL.Query().Get("to"), errMsg, time.Since(startTime))
 		return
 	}
 
@@ -42,11 +62,12 @@ func RangeFizzBuzzHandler(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 1*time.Second)
 	defer cancel()
 
-	// iterate "from" until "to" and inclusive
-	results := make([]string, to-from+1)
+	results := make([]string, numRange)
 	var wg sync.WaitGroup
 
-	calcChan := make(chan struct{}, 1000)
+	// Technically can use 1000 as a maximum goroutine for the calculation at same time,
+	// however it's not needed atm since the max range is 100
+	calcChan := make(chan struct{}, numRange)
 
 	for i := from; i <= to; i++ {
 		wg.Add(1)
@@ -68,13 +89,14 @@ func RangeFizzBuzzHandler(w http.ResponseWriter, r *http.Request) {
 	// return string with space delimiter
 	response := strings.Join(results, " ")
 	w.Write([]byte(response))
-	log.Printf("Request: %s, Response: %s, Latency: %v\n", r.URL.String(), response, time.Since(startTime))
+	log.Printf("Request: from:%s to:%s, Response: %v, Latency: %v\n", r.URL.Query().Get("from"), r.URL.Query().Get("to"), response, time.Since(startTime))
 }
 
 func main() {
 	http.HandleFunc("/range-fizzbuzz", RangeFizzBuzzHandler)
 
 	server := &http.Server{Addr: ":3000"}
+	log.Println("Server is running")
 
 	go func() {
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
@@ -95,5 +117,5 @@ func main() {
 		log.Fatal("Server forced to shutdown:", err)
 	}
 
-	log.Println("Server exiting")
+	log.Println("Server is exiting")
 }
